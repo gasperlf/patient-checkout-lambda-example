@@ -5,13 +5,15 @@ Description: >
 
   Sample SAM Template for patient-checkout
 
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+
 Globals:
   Function:
     Timeout: 20
     MemorySize: 512
     Runtime: java11
 Resources:
+  PatientCheckoutDLQ:
+    Type: AWS::SNS::Topic
   PatientCheckoutBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -25,6 +27,9 @@ Resources:
       Handler: net.ontopsolutions.lambda.s3sns.PatientCheckOutLambda::handle
       Architectures:
         - x86_64
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref PatientCheckoutDLQ
       Policies:
         - S3ReadPolicy:
             BucketName: !Sub ${AWS::StackName}-${AWS::AccountId}-${AWS::Region}
@@ -47,11 +52,26 @@ Resources:
       Handler: net.ontopsolutions.lambda.s3sns.BillManagementLambda::handle
       Architectures:
         - x86_64
-      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+      Environment:
         Variables:
-          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1 # More info about tiered compilation https://aws.amazon.com/blogs/compute/optimizing-aws-lambda-function-performance-for-java/
+          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1
       Events:
         SNSEvent:
           Type: SNS
           Properties:
             Topic: !Ref PatientCheckoutTopic
+  ErrorHandlingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: PatientCheckoutLambda
+      Handler: net.ontopsolutions.lambda.s3sns.ErrorHandler::handle
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1
+      Events:
+        SNSEvent:
+          Type: SNS
+          Properties:
+            Topic: !Ref PatientCheckoutDLQ
